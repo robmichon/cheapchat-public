@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Prywatny czat</title>
+<link rel="stylesheet" href="/public/style.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
+</head>
+<body class="theme-dark">
+<div class="app">
+  <aside class="sidebar left">
+    <div class="sidehead">
+      <button id="newBtn" title="Nowy wątek">🆕</button>
+      <input id="renameInp" placeholder="Tytuł wątku"/>
+      <button id="renameBtn" title="Zmień tytuł">✏️</button>
+    </div>
+    <div class="threads" id="threads"></div>
+    <div class="note">Kliknij wątek, by przełączyć. 🗑️ usuwa wątek.</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="toolbar">
+        <label><input type="checkbox" id="webChk"> 🌐 Realtime web</label>
+        <label><input type="checkbox" id="memChk" checked> 🧠 Pamięć globalna</label>
+        <button id="imgBtn" title="Obraz z promptu">🖼️ Obraz</button>
+        <select id="voiceSel" title="Głos TTS"></select>
+        <button id="speakBtn" title="Czytaj na głos">▶️ Głos</button>
+        <select id="themeSel" title="Motyw">
+          <option value="theme-dark">Dark</option>
+          <option value="theme-light">Light</option>
+          <option value="theme-sepia">Sepia</option>
+          <option value="theme-contrast">High Contrast</option>
+        </select>
+        <button id="memPanelBtn">🔧 Pamięć</button>
+        <button id="pdfUploadBtn">📄 PDF</button>
+        <button id="pdfListBtn">📚 Lista PDF</button>
+        <input id="pdfFile" type="file" accept="application/pdf" style="display:none">
+        <div id="status" class="status">• gotowy</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="chat"></div>
+      <div class="composer">
+        <textarea id="inp" rows="3" placeholder="Napisz... (Enter=wyślij, Shift+Enter=nowa linia)"></textarea>
+        <div class="colbtns">
+          <button id="sendBtn">Wyślij</button>
+          <button id="micBtn" title="Przytrzymaj, aby mówić 🎤">🎤</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="sidebar right">
+    <div class="sidehead"><span>Spis zapytań</span></div>
+    <div id="toc" class="threads"></div>
+    <div class="note">Kliknij numer, aby przewinąć. ✏️ edycja etykiety.</div>
+  </aside>
+</div>
+
+<!-- Modal pamięci -->
+<div id="memModal" class="modal hidden">
+  <div class="modalcard">
+    <div class="modalhead">
+      <h3>Pamięć globalna</h3>
+      <button id="memClose">✖</button>
+    </div>
+    <div class="modalbody">
+      <div class="row">
+        <input id="memKey" placeholder="klucz (opcjonalnie)">
+        <select id="memScope">
+          <option value="style">style</option>
+          <option value="voice">voice</option>
+          <option value="facts">facts</option>
+          <option value="other" selected>other</option>
+        </select>
+      </div>
+      <textarea id="memValue" rows="3" placeholder="treść do zapamiętania"></textarea>
+      <div class="row">
+        <button id="memAdd">➕ Dodaj</button>
+        <button id="memRefresh">🔄 Odśwież</button>
+      </div>
+      <div id="memList" class="memlist"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/public/script.js"></script>
+</body>
+</html>
+
