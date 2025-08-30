@@ -1,0 +1,8 @@
+# sekrety/konfiguracje
+chat-api.env
+.env
+*.env
+*.key
+*.pem
+config.json
+
