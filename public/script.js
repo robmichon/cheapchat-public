@@ -28,9 +28,12 @@ const memAdd = document.getElementById('memAdd');
 const memRefresh = document.getElementById('memRefresh');
 const memList = document.getElementById('memList');
 
-const pdfUploadBtn = document.getElementById('pdfUploadBtn');
-const pdfListBtn = document.getElementById('pdfListBtn');
-const pdfFile = document.getElementById('pdfFile');
+const fileInp = document.getElementById('fileInp');
+const filesBtn = document.getElementById('filesBtn');
+const filesModal = document.getElementById('filesModal');
+const filesClose = document.getElementById('filesClose');
+const filesList = document.getElementById('filesList');
+const filesUpload = document.getElementById('filesUpload');
 
 function el(tag, cls){ const x = document.createElement(tag); if(cls) x.className=cls; return x; }
 function renderMarkdown(md) {
@@ -309,47 +312,50 @@ async function loadMemList(){
   section('Wyłączone', inactive, false);
 }
 
-// PDF upload/list
-pdfUploadBtn.onclick = ()=> pdfFile.click();
-pdfFile.onchange = async ()=>{
-  if(!pdfFile.files.length) return;
-  const fd = new FormData(); fd.append('file', pdfFile.files[0]);
-  setStatus('upload PDF…');
-  const r = await fetch('/api/pdf/upload', {method:'POST', body: fd});
+// Pliki
+function showFilesModal(open){ filesModal.classList.toggle('hidden', !open); if(open) loadFilesList(); }
+filesBtn.onclick = ()=> showFilesModal(true);
+filesClose.onclick = ()=> showFilesModal(false);
+filesUpload.onclick = ()=> fileInp.click();
+fileInp.onchange = ()=>{ if(fileInp.files.length){ uploadFiles(fileInp.files); fileInp.value=""; } };
+
+async function uploadFiles(files){
+  const fd = new FormData();
+  for(const f of files) fd.append('files', f);
+  setStatus('upload pliku…');
+  const r = await fetch('/api/files/upload', {method:'POST', body: fd});
   const js = await r.json();
-  if(r.ok){ alert('Wgrano: ' + js.name); } else { alert('Błąd uploadu: ' + (js.detail || r.status)); }
-  pdfFile.value = '';
-  setStatus('gotowy');
-};
-pdfListBtn.onclick = async ()=>{
-  const r = await fetch('/api/pdf/list'); const list = await r.json();
-  if(!Array.isArray(list) || !list.length){ alert('Brak dokumentów.'); return; }
-  const choice = prompt("Wpisz numer:\n" + list.map((d,i)=>`${i+1}. ${d.name} (${d.id.slice(0,8)})`).join("\n"));
-  const idx = (parseInt(choice,10) || 0) - 1;
-  const doc = list[idx]; if(!doc) return;
-  const action = prompt("Akcja: [open/text/ocr/delete/generate]\nopen=otwórz; text=parsuj; ocr=OCR; delete=usuń; generate=eksport ostatniej odpowiedzi do PDF");
-  if(action === "open"){
-    window.open(doc.url, "_blank");
-  } else if(action === "text"){
-    setStatus('parsuję PDF…');
-    const rr = await fetch(`/api/pdf/${doc.id}/text`); const jj = await rr.json();
-    addTextMsg('assistant', "### Tekst z PDF\n\n```\n" + (jj.text||"") + "\n```");
-    setStatus('gotowy');
-  } else if(action === "ocr"){
-    const lang = prompt("Języki OCR (np. pol+eng):", "pol+eng") || "pol+eng";
-    setStatus('OCR…');
-    const rr = await fetch(`/api/pdf/${doc.id}/ocr?lang=${encodeURIComponent(lang)}`); const jj = await rr.json();
-    addTextMsg('assistant', "### OCR PDF ("+lang+")\n\n```\n" + (jj.text||"") + "\n```");
-    setStatus('gotowy');
-  } else if(action === "delete"){
-    if(confirm("Usunąć?")){ await fetch(`/api/pdf/${doc.id}`, {method:'DELETE'}); alert("Usunięto."); }
-  } else if(action === "generate"){
-    const last = window._lastReply || "Brak odpowiedzi do eksportu.";
-    const fname = prompt("Nazwa pliku (bez .pdf):", "export") || "export";
-    const rr = await fetch('/api/pdf/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({filename: fname + ".pdf", title: "Eksport z czatu", text: last})});
-    const jj = await rr.json(); if(jj.url){ window.open(jj.url, "_blank"); }
+  if(r.ok){
+    for(const it of js.files || []){
+      if(it.mime && it.mime.startsWith('image/')) addImageMsg(it.url);
+      else addTextMsg('assistant', `[${it.name}](${it.url})`);
+    }
+    loadFilesList();
+  } else {
+    alert('Błąd uploadu: ' + (js.detail || r.status));
   }
-};
+  setStatus('gotowy');
+}
+
+async function loadFilesList(){
+  const r = await fetch('/api/files/list'); const list = await r.json();
+  filesList.innerHTML = "";
+  for(const f of list){
+    const row = document.createElement('div'); row.className='fileitem';
+    row.innerHTML = `<div><b>${f.name}</b> <span class="muted">${(f.size/1024).toFixed(1)}kB</span></div>`;
+    const act = document.createElement('div'); act.className='actions';
+    const openBtn = document.createElement('button'); openBtn.textContent='Otwórz'; openBtn.onclick=()=>window.open(f.url,'_blank');
+    const textBtn = document.createElement('button'); textBtn.textContent='Tekst'; textBtn.onclick=async()=>{ setStatus('parsuję…'); const rr = await fetch(`/api/files/${f.id}/text`); const jj = await rr.json(); addTextMsg('assistant', "### Tekst z pliku\n\n```\n" + (jj.text||"") + "\n```"); setStatus('gotowy'); };
+    const ocrBtn = document.createElement('button'); ocrBtn.textContent='OCR'; ocrBtn.onclick=async()=>{ const lang = prompt('Języki OCR (np. pol+eng):','pol+eng') || 'pol+eng'; setStatus('OCR…'); const rr = await fetch(`/api/files/${f.id}/ocr?lang=${encodeURIComponent(lang)}`); const jj = await rr.json(); addTextMsg('assistant', "### OCR ("+lang+")\n\n```\n" + (jj.text||"") + "\n```"); setStatus('gotowy'); };
+    const delBtn = document.createElement('button'); delBtn.textContent='Usuń'; delBtn.onclick=async()=>{ if(confirm('Usunąć?')){ await fetch(`/api/files/${f.id}`, {method:'DELETE'}); loadFilesList(); } };
+    act.append(openBtn, textBtn, ocrBtn, delBtn); row.appendChild(act); filesList.appendChild(row);
+  }
+}
+
+// Drag & drop + paste
+['dragenter','dragover','dragleave','drop'].forEach(ev=> window.addEventListener(ev, e=>{ e.preventDefault(); }));
+window.addEventListener('drop', e=>{ const fs = e.dataTransfer?.files; if(fs && fs.length) uploadFiles(fs); });
+window.addEventListener('paste', e=>{ const items = e.clipboardData?.items || []; const arr=[]; for(const it of items){ if(it.kind==='file'){ const f=it.getAsFile(); if(f) arr.push(f); } } if(arr.length) uploadFiles(arr); });
 
 // INIT
 function init(){ const t = localStorage.getItem('theme') || 'theme-dark'; themeSel.value = t; document.body.className = t; loadVoices(); refreshThreads().then(newThread); setStatus('gotowy'); }

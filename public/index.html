@@ -27,22 +27,20 @@
       <div class="toolbar">
         <label><input type="checkbox" id="webChk"> 🌐 Realtime web</label>
         <label><input type="checkbox" id="memChk" checked> 🧠 Pamięć globalna</label>
-        <button id="imgBtn" title="Obraz z promptu">🖼️ Obraz</button>
-        <select id="voiceSel" title="Głos TTS"></select>
-        <button id="speakBtn" title="Czytaj na głos">▶️ Głos</button>
-        <select id="themeSel" title="Motyw">
-          <option value="theme-dark">Dark</option>
-          <option value="theme-light">Light</option>
-          <option value="theme-sepia">Sepia</option>
-          <option value="theme-contrast">High Contrast</option>
-        </select>
-        <button id="memPanelBtn">🔧 Pamięć</button>
-        <button id="pdfUploadBtn">📄 PDF</button>
-        <button id="pdfListBtn">📚 Lista PDF</button>
-        <input id="pdfFile" type="file" accept="application/pdf" style="display:none">
-        <div id="status" class="status">• gotowy</div>
+          <button id="imgBtn" title="Obraz z promptu">🖼️ Obraz</button>
+          <select id="voiceSel" title="Głos TTS"></select>
+          <button id="speakBtn" title="Czytaj na głos">▶️ Głos</button>
+          <select id="themeSel" title="Motyw">
+            <option value="theme-dark">Dark</option>
+            <option value="theme-light">Light</option>
+            <option value="theme-sepia">Sepia</option>
+            <option value="theme-contrast">High Contrast</option>
+          </select>
+          <button id="memPanelBtn">🔧 Pamięć</button>
+          <button id="filesBtn">📎 Pliki</button>
+          <div id="status" class="status">• gotowy</div>
+        </div>
       </div>
-    </div>
 
     <div class="card">
       <div id="chat"></div>
@@ -63,32 +61,50 @@
   </aside>
 </div>
 
-<!-- Modal pamięci -->
-<div id="memModal" class="modal hidden">
-  <div class="modalcard">
-    <div class="modalhead">
-      <h3>Pamięć globalna</h3>
-      <button id="memClose">✖</button>
-    </div>
-    <div class="modalbody">
-      <div class="row">
-        <input id="memKey" placeholder="klucz (opcjonalnie)">
-        <select id="memScope">
-          <option value="style">style</option>
-          <option value="voice">voice</option>
-          <option value="facts">facts</option>
-          <option value="other" selected>other</option>
-        </select>
+  <!-- Modal pamięci -->
+  <div id="memModal" class="modal hidden">
+    <div class="modalcard">
+      <div class="modalhead">
+        <h3>Pamięć globalna</h3>
+        <button id="memClose">✖</button>
       </div>
-      <textarea id="memValue" rows="3" placeholder="treść do zapamiętania"></textarea>
-      <div class="row">
-        <button id="memAdd">➕ Dodaj</button>
-        <button id="memRefresh">🔄 Odśwież</button>
+      <div class="modalbody">
+        <div class="row">
+          <input id="memKey" placeholder="klucz (opcjonalnie)">
+          <select id="memScope">
+            <option value="style">style</option>
+            <option value="voice">voice</option>
+            <option value="facts">facts</option>
+            <option value="other" selected>other</option>
+          </select>
+        </div>
+        <textarea id="memValue" rows="3" placeholder="treść do zapamiętania"></textarea>
+        <div class="row">
+          <button id="memAdd">➕ Dodaj</button>
+          <button id="memRefresh">🔄 Odśwież</button>
+        </div>
+        <div id="memList" class="memlist"></div>
       </div>
-      <div id="memList" class="memlist"></div>
     </div>
   </div>
-</div>
+
+  <!-- Modal plików -->
+  <div id="filesModal" class="modal hidden">
+    <div class="modalcard">
+      <div class="modalhead">
+        <h3>Pliki</h3>
+        <div class="row">
+          <button id="filesUpload">📤 Wgraj</button>
+          <button id="filesClose">✖</button>
+        </div>
+      </div>
+      <div class="modalbody">
+        <div id="filesList" class="filelist"></div>
+      </div>
+    </div>
+  </div>
+
+  <input id="fileInp" type="file" multiple style="display:none">
 
 <script src="/public/script.js"></script>
 </body>

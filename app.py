@@ -31,9 +31,10 @@ import requests
 from pdfminer.high_level import extract_text as pdf_extract_text
 import pytesseract
 from pdf2image import convert_from_path
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from textwrap import wrap
+from docx import Document
+from odf.opendocument import load as odf_load
+from odf import text as odf_text
+from PIL import Image
 
 # ----------------- KONFIG ----------------------
 API_KEY = None  # loaded dynamically
@@ -46,13 +47,17 @@ TTS_DEFAULT = "alloy"
 TTS_VOICES  = ["alloy","verse","coral","amber","breeze","cobalt","sol"]  # + 'sol'
 PORT = int(os.environ.get("PORT", 8000))
 
-DB_PATH = "memory.sqlite"
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
-PUBLIC_DIR = BASE_DIR / "public"
-STATIC_DIR = BASE_DIR / "static"
+CONFIG_DIR = pathlib.Path.home() / ".config" / "cheapchat"
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+print(f"[config] user data dir: {CONFIG_DIR}")
+DB_PATH = CONFIG_DIR / "memory.sqlite"
+print(f"[db] using {DB_PATH}")
+STATIC_DIR = CONFIG_DIR / "static"
 IMG_DIR = STATIC_DIR / "images"
 DOCS_DIR = STATIC_DIR / "docs"
 STATIC_DIR.mkdir(exist_ok=True); IMG_DIR.mkdir(parents=True, exist_ok=True); DOCS_DIR.mkdir(parents=True, exist_ok=True)
+PUBLIC_DIR = BASE_DIR / "public"
 
 # ---- API key loader ----
 def _read_first_nonempty(path):
@@ -143,7 +148,8 @@ def ensure_schema():
             created_at TEXT, updated_at TEXT
         )""")
         conn.execute("""CREATE TABLE IF NOT EXISTS documents(
-            id TEXT PRIMARY KEY, filename TEXT, orig_name TEXT, created_at TEXT
+            id TEXT PRIMARY KEY, filename TEXT, orig_name TEXT,
+            mime TEXT, size INTEGER, created_at TEXT
         )""")
         # defensywne kolumny:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(messages)").fetchall()}
@@ -152,6 +158,11 @@ def ensure_schema():
         cols = {r[1] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
         if "use_memory" not in cols:
             conn.execute('ALTER TABLE threads ADD COLUMN use_memory INTEGER DEFAULT 1')
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(documents)").fetchall()}
+        if "mime" not in cols:
+            conn.execute('ALTER TABLE documents ADD COLUMN mime TEXT')
+        if "size" not in cols:
+            conn.execute('ALTER TABLE documents ADD COLUMN size INTEGER')
 ensure_schema()
 
 def db():
@@ -209,10 +220,6 @@ class MemUpdateReq(BaseModel):
 class MemToggleReq(BaseModel):
     id: int
 
-class GenReq(BaseModel):
-    filename: Optional[str] = "generated.pdf"
-    title: Optional[str] = "Dokument"
-    text: str
 
 # -------------- UTIL: THREADS ------------------
 def new_thread(title: str = "", use_memory: bool = True) -> str:
@@ -583,29 +590,33 @@ def gen_image(req: ImageReq):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Image generation failed: {e}")
 
-# -------------- PDF: upload/list/delete --------
-@app.post("/api/pdf/upload")
-async def pdf_upload(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF allowed.")
-    doc_id = str(uuid.uuid4())
-    fname = f"{doc_id}.pdf"
-    fpath = DOCS_DIR / fname
-    raw = await file.read()
-    with open(fpath, "wb") as f: f.write(raw)
-    with db() as conn:
-        conn.execute("INSERT INTO documents(id, filename, orig_name, created_at) VALUES(?,?,?,?)",
-                     (doc_id, fname, file.filename, datetime.now(timezone.utc).isoformat()))
-    return {"id": doc_id, "url": f"/static/docs/{fname}", "name": file.filename}
+# -------------- FILES: upload/list/delete -------
+@app.post("/api/files/upload")
+async def files_upload(files: List[UploadFile] = File(...)):
+    results = []
+    for file in files:
+        raw = await file.read()
+        doc_id = str(uuid.uuid4())
+        suffix = pathlib.Path(file.filename).suffix
+        fname = f"{doc_id}{suffix}"
+        fpath = DOCS_DIR / fname
+        with open(fpath, "wb") as f:
+            f.write(raw)
+        with db() as conn:
+            conn.execute("INSERT INTO documents(id, filename, orig_name, mime, size, created_at) VALUES(?,?,?,?,?,?)",
+                         (doc_id, fname, file.filename, file.content_type, len(raw), datetime.now(timezone.utc).isoformat()))
+        url = f"/static/docs/{fname}"
+        results.append({"id": doc_id, "url": url, "name": file.filename, "mime": file.content_type, "size": len(raw)})
+    return {"files": results}
 
-@app.get("/api/pdf/list")
-def pdf_list():
+@app.get("/api/files/list")
+def files_list():
     with db() as conn:
-        cur = conn.execute("SELECT id, filename, orig_name, created_at FROM documents ORDER BY created_at DESC")
-        return [{"id":i,"url":f"/static/docs/{fn}","name":on,"created_at":ca} for (i,fn,on,ca) in cur.fetchall()]
+        cur = conn.execute("SELECT id, filename, orig_name, mime, size, created_at FROM documents ORDER BY created_at DESC")
+        return [{"id":i,"url":f"/static/docs/{fn}","name":on,"mime":m,"size":s,"created_at":ca} for (i,fn,on,m,s,ca) in cur.fetchall()]
 
-@app.delete("/api/pdf/{doc_id}")
-def pdf_delete(doc_id: str):
+@app.delete("/api/files/{doc_id}")
+def files_delete(doc_id: str):
     with db() as conn:
         cur = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,))
         row = cur.fetchone()
@@ -617,56 +628,50 @@ def pdf_delete(doc_id: str):
         conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
     return {"ok": True}
 
-@app.get("/api/pdf/{doc_id}/text")
-def pdf_text(doc_id: str):
+@app.get("/api/files/{doc_id}/text")
+def files_text(doc_id: str):
     with db() as conn:
         cur = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,))
         row = cur.fetchone()
     if not row: raise HTTPException(status_code=404, detail="Not found")
-    fpath = DOCS_DIR / row[0]
+    fname = row[0]
+    fpath = DOCS_DIR / fname
+    suffix = pathlib.Path(fname).suffix.lower()
     try:
-        text = pdf_extract_text(str(fpath))
+        if suffix == ".pdf":
+            text = pdf_extract_text(str(fpath))
+        elif suffix in (".docx", ".doc"):
+            doc = Document(str(fpath))
+            text = "\n".join(p.text for p in doc.paragraphs)
+        elif suffix == ".odt":
+            doc = odf_load(str(fpath))
+            text = "\n".join(t.firstChild.data if t.firstChild else "" for t in doc.getElementsByType(odf_text.P))
+        else:
+            text = fpath.read_text(encoding="utf-8", errors="ignore")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"extract_text failed: {e}")
+        raise HTTPException(status_code=500, detail=f"text extraction failed: {e}")
     return {"id": doc_id, "text": text or ""}
 
-@app.get("/api/pdf/{doc_id}/ocr")
-def pdf_ocr(doc_id: str, lang: str = "pol+eng", dpi: int = 250):
+@app.get("/api/files/{doc_id}/ocr")
+def files_ocr(doc_id: str, lang: str = "pol+eng", dpi: int = 250):
     with db() as conn:
         cur = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,))
         row = cur.fetchone()
     if not row: raise HTTPException(status_code=404, detail="Not found")
-    fpath = DOCS_DIR / row[0]
+    fname = row[0]
+    fpath = DOCS_DIR / fname
+    suffix = pathlib.Path(fname).suffix.lower()
     try:
-        images = convert_from_path(str(fpath), dpi=dpi)
-        texts = [pytesseract.image_to_string(img, lang=lang) for img in images]
-        full = "\n\n".join(texts)
+        if suffix == ".pdf":
+            images = convert_from_path(str(fpath), dpi=dpi)
+            texts = [pytesseract.image_to_string(img, lang=lang) for img in images]
+            full = "\n\n".join(texts)
+        else:
+            img = Image.open(fpath)
+            full = pytesseract.image_to_string(img, lang=lang)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {e}")
     return {"id": doc_id, "lang": lang, "text": full}
-
-@app.post("/api/pdf/generate")
-def pdf_generate(req: GenReq):
-    doc_id = str(uuid.uuid4())
-    fname = f"{doc_id}.pdf"
-    fpath = DOCS_DIR / fname
-    c = canvas.Canvas(str(fpath), pagesize=A4)
-    width, height = A4
-    x_margin, y_margin = 50, 50
-    y = height - y_margin
-    c.setFont("Helvetica-Bold", 16); c.drawString(x_margin, y, req.title or "Dokument"); y -= 30
-    c.setFont("Helvetica", 11)
-    max_chars = 95
-    for line in (req.text or "").splitlines():
-        for wl in wrap(line, max_chars):
-            if y < 60:
-                c.showPage(); y = height - y_margin; c.setFont("Helvetica", 11)
-            c.drawString(x_margin, y, wl); y -= 14
-    c.save()
-    with db() as conn:
-        conn.execute("INSERT INTO documents(id, filename, orig_name, created_at) VALUES(?,?,?,?)",
-                     (doc_id, fname, req.filename or "generated.pdf", datetime.now(timezone.utc).isoformat()))
-    return {"id": doc_id, "url": f"/static/docs/{fname}", "name": req.filename or "generated.pdf"}
 
 # -------------- HEALTH -------------------------
 @app.get("/-/health")
