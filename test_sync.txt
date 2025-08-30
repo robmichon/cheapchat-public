@@ -1,0 +1,2 @@
+test_sync.txt
+TEst synchronizacji repu pub z repo private.
