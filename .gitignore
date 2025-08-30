@@ -5,4 +5,6 @@ chat-api.env
 *.key
 *.pem
 config.json
+memory.sqlite
+
 
