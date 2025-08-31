@@ -25,22 +25,14 @@
   <main class="main">
     <div class="topbar">
       <div class="toolbar">
-        <label><input type="checkbox" id="webChk"> 🌐 Realtime web</label>
-        <label><input type="checkbox" id="memChk" checked> 🧠 Pamięć globalna</label>
-          <button id="imgBtn" title="Obraz z promptu">🖼️ Obraz</button>
-          <select id="voiceSel" title="Głos TTS"></select>
-          <button id="speakBtn" title="Czytaj na głos">▶️ Głos</button>
-          <select id="themeSel" title="Motyw">
-            <option value="theme-dark">Dark</option>
-            <option value="theme-light">Light</option>
-            <option value="theme-sepia">Sepia</option>
-            <option value="theme-contrast">High Contrast</option>
-          </select>
-          <button id="memPanelBtn">🔧 Pamięć</button>
-          <button id="filesBtn">📎 Pliki</button>
-          <div id="status" class="status">• gotowy</div>
-        </div>
+        <button id="imgBtn" title="Obraz z promptu">🖼️ Obraz</button>
+        <button id="filesBtn">📎 Pliki</button>
+        <button id="pdfBtn" title="Eksportuj do PDF">📄 PDF</button>
+        <button id="speakBtn" title="Czytaj na głos">▶️ Głos</button>
+        <button id="settingsBtn">⚙️ Ustawienia</button>
+        <div id="status" class="status">• gotowy</div>
       </div>
+    </div>
 
     <div class="card">
       <div id="chat"></div>
@@ -60,6 +52,31 @@
     <div class="note">Kliknij numer, aby przewinąć. ✏️ edycja etykiety.</div>
   </aside>
 </div>
+
+  <!-- Modal ustawień -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modalcard">
+      <div class="modalhead">
+        <h3>Ustawienia</h3>
+        <button id="settingsClose">✖</button>
+      </div>
+      <div class="modalbody">
+        <label><input type="checkbox" id="webChk"> 🌐 Realtime web</label>
+        <label><input type="checkbox" id="memChk" checked> 🧠 Pamięć globalna</label>
+        <div class="row"><span>Model:</span> <select id="modelSel"></select></div>
+        <div class="row"><span>Głos:</span> <select id="voiceSel"></select></div>
+        <div class="row"><span>Motyw:</span>
+          <select id="themeSel">
+            <option value="theme-dark">Dark</option>
+            <option value="theme-light">Light</option>
+            <option value="theme-sepia">Sepia</option>
+            <option value="theme-contrast">High Contrast</option>
+          </select>
+        </div>
+        <button id="memPanelBtn">🔧 Pamięć</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Modal pamięci -->
   <div id="memModal" class="modal hidden">

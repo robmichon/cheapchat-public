@@ -35,6 +35,7 @@ from docx import Document
 from odf.opendocument import load as odf_load
 from odf import text as odf_text
 from PIL import Image
+from reportlab.pdfgen import canvas
 
 # ----------------- KONFIG ----------------------
 API_KEY = None  # loaded dynamically
@@ -42,6 +43,7 @@ MODEL_TEXT  = "gpt-5-mini"
 MODEL_STT   = "gpt-4o-mini-transcribe"
 MODEL_TTS   = "gpt-4o-mini-tts"
 MODEL_IMAGE = "gpt-image-1"
+MODEL_CHOICES = ["gpt-4o-mini", "gpt-4o", "gpt-5-mini", "gpt-5", "gpt-5-large"]
 
 TTS_DEFAULT = "alloy"
 TTS_VOICES  = ["alloy","verse","coral","amber","breeze","cobalt","sol"]  # + 'sol'
@@ -174,10 +176,12 @@ class SendReq(BaseModel):
     text: str
     web: Optional[bool] = False
     use_memory: Optional[bool] = True
+    model: Optional[str] = None
 
 class SendResp(BaseModel):
     thread_id: str
     reply: str
+    tokens: int
 
 class RenameReq(BaseModel):
     thread_id: str
@@ -412,6 +416,27 @@ def api_delete_thread(thread_id: str):
     delete_thread(thread_id)
     return {"ok": True}
 
+def create_pdf(thread_id: str) -> pathlib.Path:
+    msgs = get_thread_messages(thread_id)
+    fname = f"{thread_id}.pdf"
+    fpath = DOCS_DIR / fname
+    c = canvas.Canvas(str(fpath))
+    width, height = c._pagesize
+    textobj = c.beginText(40, height - 40)
+    for m in msgs:
+        textobj.textLine(f"{m['role']}: ")
+        for line in (m['content'] or '').splitlines():
+            textobj.textLine('  ' + line)
+        textobj.textLine('')
+    c.drawText(textobj)
+    c.save()
+    return fpath
+
+@app.get("/api/thread/{thread_id}/pdf")
+def thread_pdf(thread_id: str):
+    fpath = create_pdf(thread_id)
+    return FileResponse(fpath, media_type="application/pdf", filename=f"{thread_id}.pdf")
+
 # -------------- ENDPOINTY: ANCHORS ------------
 @app.get("/api/anchors/{thread_id}")
 def api_get_anchors(thread_id: str):
@@ -451,6 +476,11 @@ def api_mem_forget(req: MemToggleReq):
 def api_mem_restore(req: MemToggleReq):
     mem_restore(req.id); return {"ok": True}
 
+# -------------- MODELS -------------------------
+@app.get("/api/models")
+def list_models():
+    return {"default": MODEL_TEXT, "models": MODEL_CHOICES}
+
 # -------------- SEND (komendy + web + memory) -
 @app.post("/api/send", response_model=SendResp)
 def send(req: SendReq):
@@ -466,21 +496,21 @@ def send(req: SendReq):
             payload = text.split(":",1)[1].strip() if ":" in text else text
             mem_add(None, payload, "other")
             add_msg(thread_id, "system", f"Zapisano do pamięci: {payload}", "text")
-            return {"thread_id": thread_id, "reply": "✅ Zapamiętane."}
+            return {"thread_id": thread_id, "reply": "✅ Zapamiętane.", "tokens": 0}
 
         if low.startswith(("zapomnij:", "forget:")):
             phrase = text.split(":",1)[1].strip() if ":" in text else ""
             cands = mem_forget_by_phrase(phrase)
             if len(cands)==1 and cands[0].get("status")=="forgotten":
                 add_msg(thread_id, "system", f"Zapomniano: {phrase}", "text")
-                return {"thread_id": thread_id, "reply": "🧹 Zapomniane."}
+                return {"thread_id": thread_id, "reply": "🧹 Zapomniane.", "tokens": 0}
             elif len(cands)==0:
-                return {"thread_id": thread_id, "reply": "Nie znalazłem pasujących wpisów w pamięci."}
+                return {"thread_id": thread_id, "reply": "Nie znalazłem pasujących wpisów w pamięci.", "tokens": 0}
             else:
                 lines = ["Znaleziono wiele wpisów. Wybierz ID do zapomnienia w panelu pamięci:"]
                 lines += [f"- #{x['id']}: {x.get('key','')} — {x['value']}" for x in cands]
                 add_msg(thread_id, "system", "\n".join(lines), "text")
-                return {"thread_id": thread_id, "reply": "\n".join(lines)}
+                return {"thread_id": thread_id, "reply": "\n".join(lines), "tokens": 0}
 
         add_msg(thread_id, "user", text, "text")
 
@@ -520,8 +550,15 @@ def send(req: SendReq):
 
         messages = [{"role": "system", "content": system_prompt}] + history
 
-        resp = client.responses.create(model=MODEL_TEXT, input=messages)
+        model = req.model if req.model in MODEL_CHOICES else MODEL_TEXT
+        resp = client.responses.create(model=model, input=messages)
         reply = getattr(resp, "output_text", None) or str(resp)
+        tokens = 0
+        usage = getattr(resp, "usage", None)
+        if usage:
+            tokens = getattr(usage, "total_tokens", 0)
+        elif isinstance(resp, dict):
+            tokens = resp.get("usage", {}).get("total_tokens", 0)
         add_msg(thread_id, "assistant", reply, "text")
 
         # Nadaj tytuł, jeśli pusty
@@ -531,7 +568,7 @@ def send(req: SendReq):
         if row and not row[0]:
             set_thread_title(thread_id, text[:60])
 
-        return {"thread_id": thread_id, "reply": reply}
+        return {"thread_id": thread_id, "reply": reply, "tokens": tokens}
 
     except HTTPException:
         raise
