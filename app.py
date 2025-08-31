@@ -129,6 +129,11 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 def index():
     return FileResponse(PUBLIC_DIR / "index.html")
 
+
+@app.get("/settings")
+def settings_page():
+    return FileResponse(PUBLIC_DIR / "settings.html")
+
 # -------------- DB + MIGRACJE ------------------
 def ensure_schema():
     with sqlite3.connect(DB_PATH) as conn:

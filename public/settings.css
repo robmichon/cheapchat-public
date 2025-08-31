@@ -1,0 +1,5 @@
+@import "./style.css";
+
+.setwrap{max-width:600px;margin:20px auto;padding:12px;}
+.setwrap .row{display:flex;gap:8px;align-items:center;margin:8px 0;}
+.setwrap label{display:block;margin:8px 0;}

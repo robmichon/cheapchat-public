@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Prywatny czat</title>
-<link rel="stylesheet" href="/public/style.css">
+<link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
@@ -53,60 +53,8 @@
   </aside>
 </div>
 
-  <!-- Modal ustawień -->
-  <div id="settingsModal" class="modal hidden">
-    <div class="modalcard">
-      <div class="modalhead">
-        <h3>Ustawienia</h3>
-        <button id="settingsClose">✖</button>
-      </div>
-      <div class="modalbody">
-        <label><input type="checkbox" id="webChk"> 🌐 Realtime web</label>
-        <label><input type="checkbox" id="memChk" checked> 🧠 Pamięć globalna</label>
-        <div class="row"><span>Model:</span> <select id="modelSel"></select></div>
-        <div class="row"><span>Głos:</span> <select id="voiceSel"></select></div>
-        <div class="row"><span>Motyw:</span>
-          <select id="themeSel">
-            <option value="theme-dark">Dark</option>
-            <option value="theme-light">Light</option>
-            <option value="theme-sepia">Sepia</option>
-            <option value="theme-contrast">High Contrast</option>
-          </select>
-        </div>
-        <button id="memPanelBtn">🔧 Pamięć</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal pamięci -->
-  <div id="memModal" class="modal hidden">
-    <div class="modalcard">
-      <div class="modalhead">
-        <h3>Pamięć globalna</h3>
-        <button id="memClose">✖</button>
-      </div>
-      <div class="modalbody">
-        <div class="row">
-          <input id="memKey" placeholder="klucz (opcjonalnie)">
-          <select id="memScope">
-            <option value="style">style</option>
-            <option value="voice">voice</option>
-            <option value="facts">facts</option>
-            <option value="other" selected>other</option>
-          </select>
-        </div>
-        <textarea id="memValue" rows="3" placeholder="treść do zapamiętania"></textarea>
-        <div class="row">
-          <button id="memAdd">➕ Dodaj</button>
-          <button id="memRefresh">🔄 Odśwież</button>
-        </div>
-        <div id="memList" class="memlist"></div>
-      </div>
-    </div>
-  </div>
-
   <!-- Modal plików -->
-  <div id="filesModal" class="modal hidden">
+  <div id="filesModal" class="modal" hidden>
     <div class="modalcard">
       <div class="modalhead">
         <h3>Pliki</h3>
@@ -123,7 +71,7 @@
 
   <input id="fileInp" type="file" multiple style="display:none">
 
-<script src="/public/script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
 
