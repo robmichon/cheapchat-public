@@ -34,6 +34,11 @@ const filesModal = document.getElementById('filesModal');
 const filesClose = document.getElementById('filesClose');
 const filesList = document.getElementById('filesList');
 const filesUpload = document.getElementById('filesUpload');
+const pdfBtn = document.getElementById('pdfBtn');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const settingsClose = document.getElementById('settingsClose');
+const modelSel = document.getElementById('modelSel');
 
 function el(tag, cls){ const x = document.createElement(tag); if(cls) x.className=cls; return x; }
 function renderMarkdown(md) {
@@ -183,6 +188,19 @@ async function refreshToc(){
 function loadTheme(){ const t = localStorage.getItem('theme') || 'theme-dark'; themeSel.value = t; document.body.className = t; }
 themeSel.onchange = ()=>{ localStorage.setItem('theme', themeSel.value); document.body.className = themeSel.value; };
 
+// Modele
+async function loadModels(){
+  try{
+    const r = await fetch('/api/models'); const data = await r.json();
+    modelSel.innerHTML = '';
+    for(const m of data.models || []){
+      const opt = el('option'); opt.value = m; opt.textContent = m;
+      if(m === data.default) opt.selected = true;
+      modelSel.appendChild(opt);
+    }
+  }catch(e){}
+}
+
 // Głosy
 async function loadVoices(){
   try{
@@ -205,7 +223,7 @@ async function sendText(text){
   setStatus('myślę…');
   sendBtn.disabled = true;
   try{
-    const payload = {thread_id: threadId || null, text, web: webChk.checked, use_memory: memChk.checked};
+    const payload = {thread_id: threadId || null, text, web: webChk.checked, use_memory: memChk.checked, model: modelSel.value};
     const r = await fetch('/api/send', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     const raw = await r.text(); let data; try { data = JSON.parse(raw); } catch(_){ throw new Error(`HTTP ${r.status} — nie-JSON:\n${raw}`); }
     if(!r.ok) throw new Error(data?.detail || `HTTP ${r.status}`);
@@ -213,7 +231,7 @@ async function sendText(text){
     replaceTypingBubble(bubble, data.reply);
     window._lastReply = data.reply;
     refreshThreads(); refreshToc();
-    setStatus('gotowy');
+    setStatus(`gotowy · ${data.tokens||0} tok`);
   }catch(e){
     bubble.remove();
     addTextMsg('assistant', `**Błąd:** ${e.message}`);
@@ -279,7 +297,7 @@ speakBtn.onclick = async ()=>{
 
 // Panel pamięci
 function toggleMem(open){ memModal.classList.toggle('hidden', !open); if(open) loadMemList(); }
-memPanelBtn.onclick = ()=> toggleMem(true);
+memPanelBtn.onclick = ()=>{ toggleSettings(false); toggleMem(true); };
 memClose.onclick = ()=> toggleMem(false);
 memRefresh.onclick = ()=> loadMemList();
 memAdd.onclick = async ()=>{
@@ -312,12 +330,19 @@ async function loadMemList(){
   section('Wyłączone', inactive, false);
 }
 
+// Ustawienia
+function toggleSettings(open){ settingsModal.classList.toggle('hidden', !open); }
+settingsBtn.onclick = ()=> toggleSettings(true);
+settingsClose.onclick = ()=> toggleSettings(false);
+
 // Pliki
 function showFilesModal(open){ filesModal.classList.toggle('hidden', !open); if(open) loadFilesList(); }
-filesBtn.onclick = ()=> showFilesModal(true);
+filesBtn.onclick = ()=> fileInp.click();
 filesClose.onclick = ()=> showFilesModal(false);
 filesUpload.onclick = ()=> fileInp.click();
 fileInp.onchange = ()=>{ if(fileInp.files.length){ uploadFiles(fileInp.files); fileInp.value=""; } };
+
+pdfBtn.onclick = ()=>{ if(threadId) window.open(`/api/thread/${threadId}/pdf`, '_blank'); };
 
 async function uploadFiles(files){
   const fd = new FormData();
@@ -358,6 +383,6 @@ window.addEventListener('drop', e=>{ const fs = e.dataTransfer?.files; if(fs && 
 window.addEventListener('paste', e=>{ const items = e.clipboardData?.items || []; const arr=[]; for(const it of items){ if(it.kind==='file'){ const f=it.getAsFile(); if(f) arr.push(f); } } if(arr.length) uploadFiles(arr); });
 
 // INIT
-function init(){ const t = localStorage.getItem('theme') || 'theme-dark'; themeSel.value = t; document.body.className = t; loadVoices(); refreshThreads().then(newThread); setStatus('gotowy'); }
+function init(){ const t = localStorage.getItem('theme') || 'theme-dark'; themeSel.value = t; document.body.className = t; loadModels(); loadVoices(); refreshThreads().then(newThread); setStatus('gotowy'); }
 window.addEventListener('DOMContentLoaded', init);
 
