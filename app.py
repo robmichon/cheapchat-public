@@ -125,9 +125,10 @@ app = FastAPI(title="Prywatny czat z pamięcią")
 app.mount("/public", StaticFiles(directory=str(PUBLIC_DIR)), name="public")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-@app.get("/")
-def index():
-    return FileResponse(PUBLIC_DIR / "index.html")
+
+@app.get("/settings")
+def settings_page():
+    return FileResponse(PUBLIC_DIR / "settings.html")
 
 # -------------- DB + MIGRACJE ------------------
 def ensure_schema():
@@ -716,6 +717,9 @@ def health():
     import openai as _openai
     return {"ok": True, "openai_version": getattr(_openai, "__version__", "unknown"),
             "models": {"text": MODEL_TEXT, "stt": MODEL_STT, "tts": MODEL_TTS, "image": MODEL_IMAGE}}
+
+# Serve public directory at root so assets can be loaded relatively
+app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="public_root")
 
 # -------------- AUTOSTART ----------------------
 if __name__ == "__main__":

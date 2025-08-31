@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Ustawienia</title>
+<link rel="stylesheet" href="settings.css">
+</head>
+<body class="theme-dark">
+<div class="setwrap">
+  <div class="card">
+    <h3>Ustawienia</h3>
+    <label><input type="checkbox" id="webChk"> 🌐 Realtime web</label>
+    <label><input type="checkbox" id="memChk"> 🧠 Pamięć globalna</label>
+    <div class="row"><span>Model:</span> <select id="modelSel"></select></div>
+    <div class="row"><span>Głos:</span> <select id="voiceSel"></select></div>
+    <div class="row"><span>Motyw:</span>
+      <select id="themeSel">
+        <option value="theme-dark">Dark</option>
+        <option value="theme-light">Light</option>
+        <option value="theme-sepia">Sepia</option>
+        <option value="theme-contrast">High Contrast</option>
+      </select>
+    </div>
+    <div class="row">
+      <button id="memPanelBtn">🔧 Pamięć</button>
+      <button id="backBtn">⬅ Powrót</button>
+    </div>
+  </div>
+
+  <div id="memModal" class="modal" hidden>
+    <div class="modalcard">
+      <div class="modalhead">
+        <h3>Pamięć globalna</h3>
+        <button id="memClose">✖</button>
+      </div>
+      <div class="modalbody">
+        <div class="row">
+          <input id="memKey" placeholder="klucz (opcjonalnie)">
+          <select id="memScope">
+            <option value="style">style</option>
+            <option value="voice">voice</option>
+            <option value="facts">facts</option>
+            <option value="other" selected>other</option>
+          </select>
+        </div>
+        <textarea id="memValue" rows="3" placeholder="treść do zapamiętania"></textarea>
+        <div class="row">
+          <button id="memAdd">➕ Dodaj</button>
+          <button id="memRefresh">🔄 Odśwież</button>
+        </div>
+        <div id="memList" class="memlist"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="settings.js"></script>
+</body>
+</html>
