@@ -8,25 +8,11 @@ const newBtn = document.getElementById('newBtn');
 const chat = document.getElementById('chat');
 const inp  = document.getElementById('inp');
 const sendBtn = document.getElementById('sendBtn');
-const webChk = document.getElementById('webChk');
-const memChk = document.getElementById('memChk');
 const micBtn  = document.getElementById('micBtn');
 const speakBtn= document.getElementById('speakBtn');
-const voiceSel= document.getElementById('voiceSel');
 const imgBtn  = document.getElementById('imgBtn');
-const themeSel= document.getElementById('themeSel');
 const toc = document.getElementById('toc');
 const statusEl = document.getElementById('status');
-
-const memModal = document.getElementById('memModal');
-const memClose = document.getElementById('memClose');
-const memPanelBtn = document.getElementById('memPanelBtn');
-const memKey = document.getElementById('memKey');
-const memValue = document.getElementById('memValue');
-const memScope = document.getElementById('memScope');
-const memAdd = document.getElementById('memAdd');
-const memRefresh = document.getElementById('memRefresh');
-const memList = document.getElementById('memList');
 
 const fileInp = document.getElementById('fileInp');
 const filesBtn = document.getElementById('filesBtn');
@@ -36,9 +22,6 @@ const filesList = document.getElementById('filesList');
 const filesUpload = document.getElementById('filesUpload');
 const pdfBtn = document.getElementById('pdfBtn');
 const settingsBtn = document.getElementById('settingsBtn');
-const settingsModal = document.getElementById('settingsModal');
-const settingsClose = document.getElementById('settingsClose');
-const modelSel = document.getElementById('modelSel');
 
 function el(tag, cls){ const x = document.createElement(tag); if(cls) x.className=cls; return x; }
 function renderMarkdown(md) {
@@ -106,7 +89,7 @@ async function refreshThreads(){
   renderThreadList(data);
   if (threadId){
     const me = data.find(t => t.id === threadId);
-    if (me){ renameInp.value = me.title || ''; memChk.checked = !!me.use_memory; }
+    if (me){ renameInp.value = me.title || ''; localStorage.setItem('use_mem', me.use_memory ? '1' : '0'); }
   }
 }
 function renderThreadList(items){
@@ -116,7 +99,7 @@ function renderThreadList(items){
     const del = el('button','del'); del.innerHTML = '🗑️'; del.title='Usuń wątek';
     del.onclick = async (ev)=>{ ev.stopPropagation(); if(!confirm('Na pewno usunąć ten wątek?')) return;
       const r = await fetch('/api/thread/'+t.id, {method:'DELETE'});
-      if(r.ok){ if(threadId===t.id){ threadId=""; chat.innerHTML=""; toc.innerHTML=""; renameInp.value=""; } refreshThreads(); }
+      if(r.ok){ if(threadId===t.id){ threadId=""; localStorage.removeItem('threadId'); chat.innerHTML=""; toc.innerHTML=""; renameInp.value=""; } refreshThreads(); }
     };
     d.appendChild(del);
     d.onclick = ()=>{ loadThread(t.id); };
@@ -130,6 +113,7 @@ async function newThread(){
 }
 async function loadThread(id){
   threadId = id;
+  localStorage.setItem('threadId', threadId);
   const r = await fetch('/api/thread/'+id); const data = await r.json();
   chat.innerHTML = "";
   let ti = 0;
@@ -150,11 +134,6 @@ renameBtn.onclick = async ()=>{ if(!threadId) return alert("Brak bieżącego wą
   if(r.ok) refreshThreads();
 };
 renameInp.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter'){ ev.preventDefault(); renameBtn.click(); } });
-
-// toggle memory
-memChk.onchange = async ()=>{ if(!threadId) return;
-  await fetch('/api/thread/use_memory', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({thread_id: threadId, use_memory: memChk.checked})});
-};
 
 // TOC / anchors
 async function refreshToc(){
@@ -185,35 +164,7 @@ async function refreshToc(){
 }
 
 // MOTYWY
-function loadTheme(){ const t = localStorage.getItem('theme') || 'theme-dark'; themeSel.value = t; document.body.className = t; }
-themeSel.onchange = ()=>{ localStorage.setItem('theme', themeSel.value); document.body.className = themeSel.value; };
-
-// Modele
-async function loadModels(){
-  try{
-    const r = await fetch('/api/models'); const data = await r.json();
-    modelSel.innerHTML = '';
-    for(const m of data.models || []){
-      const opt = el('option'); opt.value = m; opt.textContent = m;
-      if(m === data.default) opt.selected = true;
-      modelSel.appendChild(opt);
-    }
-  }catch(e){}
-}
-
-// Głosy
-async function loadVoices(){
-  try{
-    const r = await fetch('/api/voices'); const data = await r.json();
-    const voices = data.voices || [];
-    voiceSel.innerHTML = "";
-    for(const v of voices){
-      const opt = el('option'); opt.value=v; opt.textContent=v;
-      if(v===data.default) opt.selected = true;
-      voiceSel.appendChild(opt);
-    }
-  }catch(e){}
-}
+function loadTheme(){ const t = localStorage.getItem('theme') || 'theme-dark'; document.body.className = t; }
 
 // Wyślij
 async function sendText(text){
@@ -223,7 +174,13 @@ async function sendText(text){
   setStatus('myślę…');
   sendBtn.disabled = true;
   try{
-    const payload = {thread_id: threadId || null, text, web: webChk.checked, use_memory: memChk.checked, model: modelSel.value};
+    const payload = {
+      thread_id: threadId || null,
+      text,
+      web: localStorage.getItem('web') === '1',
+      use_memory: localStorage.getItem('use_mem') !== '0',
+      model: localStorage.getItem('model') || undefined
+    };
     const r = await fetch('/api/send', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     const raw = await r.text(); let data; try { data = JSON.parse(raw); } catch(_){ throw new Error(`HTTP ${r.status} — nie-JSON:\n${raw}`); }
     if(!r.ok) throw new Error(data?.detail || `HTTP ${r.status}`);
@@ -286,58 +243,21 @@ micBtn.onmousedown = startRec; micBtn.onmouseup = stopRec; micBtn.onmouseleave= 
 speakBtn.onclick = async ()=>{
   const text = window._lastReply || '';
   if(!text){ alert("Brak odpowiedzi do przeczytania."); return; }
-  const voice = voiceSel.value || 'alloy';
+  const voice = localStorage.getItem('voice') || 'alloy';
   setStatus('syntezuję…');
   const r = await fetch('/api/tts', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text, voice})});
   const buf = await r.arrayBuffer();
   const url = URL.createObjectURL(new Blob([buf], {type:'audio/mpeg'}));
-  const audio = new Audio(url); audio.play();
-  setStatus('gotowy');
+const audio = new Audio(url); audio.play();
+setStatus('gotowy');
 };
-
-// Panel pamięci
-function toggleMem(open){ memModal.classList.toggle('hidden', !open); if(open) loadMemList(); }
-memPanelBtn.onclick = ()=>{ toggleSettings(false); toggleMem(true); };
-memClose.onclick = ()=> toggleMem(false);
-memRefresh.onclick = ()=> loadMemList();
-memAdd.onclick = async ()=>{
-  const value = memValue.value.trim(); if(!value) return;
-  const key = memKey.value.trim() || null;
-  const scope = memScope.value || 'other';
-  await fetch('/api/memory/add', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key, value, scope})});
-  memValue.value = ""; loadMemList();
-};
-async function loadMemList(){
-  const active = await (await fetch('/api/memory/list?active=1')).json();
-  const inactive = await (await fetch('/api/memory/list?active=0')).json();
-  memList.innerHTML = "";
-  const section = (title, items, isActive)=> {
-    const h = document.createElement('h4'); h.textContent = title; memList.appendChild(h);
-    if(items.length===0){ const p=document.createElement('div'); p.className='memitem'; p.textContent="(pusto)"; memList.appendChild(p); return; }
-    for(const m of items){
-      const it = document.createElement('div'); it.className='memitem';
-      it.innerHTML = `<div><b>${m.key||'(brak klucza)'}</b> — <i>${m.scope}</i></div><div>${m.value}</div><div class="muted">#${m.id} • ${m.created_at}</div>`;
-      const act = document.createElement('div'); act.className='actions';
-      const btn = document.createElement('button'); btn.textContent = isActive ? 'Zapomnij' : 'Przywróć';
-      btn.onclick = async ()=>{
-        await fetch(isActive?'/api/memory/forget':'/api/memory/restore', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: m.id})});
-        loadMemList();
-      };
-      act.appendChild(btn); it.appendChild(act); memList.appendChild(it);
-    }
-  };
-  section('Aktywne', active, true);
-  section('Wyłączone', inactive, false);
-}
 
 // Ustawienia
-function toggleSettings(open){ settingsModal.classList.toggle('hidden', !open); }
-settingsBtn.onclick = ()=> toggleSettings(true);
-settingsClose.onclick = ()=> toggleSettings(false);
+settingsBtn.onclick = ()=>{ window.open('/settings', '_blank'); };
 
 // Pliki
-function showFilesModal(open){ filesModal.classList.toggle('hidden', !open); if(open) loadFilesList(); }
-filesBtn.onclick = ()=> fileInp.click();
+function showFilesModal(open){ filesModal.hidden = !open; if(open) loadFilesList(); }
+filesBtn.onclick = ()=> showFilesModal(true);
 filesClose.onclick = ()=> showFilesModal(false);
 filesUpload.onclick = ()=> fileInp.click();
 fileInp.onchange = ()=>{ if(fileInp.files.length){ uploadFiles(fileInp.files); fileInp.value=""; } };
@@ -383,6 +303,6 @@ window.addEventListener('drop', e=>{ const fs = e.dataTransfer?.files; if(fs && 
 window.addEventListener('paste', e=>{ const items = e.clipboardData?.items || []; const arr=[]; for(const it of items){ if(it.kind==='file'){ const f=it.getAsFile(); if(f) arr.push(f); } } if(arr.length) uploadFiles(arr); });
 
 // INIT
-function init(){ const t = localStorage.getItem('theme') || 'theme-dark'; themeSel.value = t; document.body.className = t; loadModels(); loadVoices(); refreshThreads().then(newThread); setStatus('gotowy'); }
+function init(){ loadTheme(); refreshThreads().then(newThread); setStatus('gotowy'); }
 window.addEventListener('DOMContentLoaded', init);
 
