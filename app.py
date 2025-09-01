@@ -50,12 +50,12 @@ TTS_VOICES  = ["alloy","verse","coral","amber","breeze","cobalt","sol"]  # + 'so
 PORT = int(os.environ.get("PORT", 8000))
 
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
-CONFIG_DIR = pathlib.Path.home() / ".config" / "cheapchat"
-CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-print(f"[config] user data dir: {CONFIG_DIR}")
-DB_PATH = CONFIG_DIR / "memory.sqlite"
+DATA_DIR = pathlib.Path(os.getenv("CHEAPCHAT_DATA_DIR", BASE_DIR / "data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+print(f"[data] dir: {DATA_DIR}")
+DB_PATH = DATA_DIR / "memory.sqlite"
 print(f"[db] using {DB_PATH}")
-STATIC_DIR = CONFIG_DIR / "static"
+STATIC_DIR = DATA_DIR / "static"
 IMG_DIR = STATIC_DIR / "images"
 DOCS_DIR = STATIC_DIR / "docs"
 STATIC_DIR.mkdir(exist_ok=True); IMG_DIR.mkdir(parents=True, exist_ok=True); DOCS_DIR.mkdir(parents=True, exist_ok=True)
@@ -127,12 +127,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/settings")
-def settings_page():
-    return FileResponse(PUBLIC_DIR / "settings.html")
-
-
-@app.get("/settings")
-def settings_page():
+def get_settings_page():
     return FileResponse(PUBLIC_DIR / "settings.html")
 
 # -------------- DB + MIGRACJE ------------------
@@ -183,6 +178,7 @@ class SendReq(BaseModel):
     web: Optional[bool] = False
     use_memory: Optional[bool] = True
     model: Optional[str] = None
+    files: List[str] = []
 
 class SendResp(BaseModel):
     thread_id: str
@@ -519,6 +515,14 @@ def send(req: SendReq):
                 return {"thread_id": thread_id, "reply": "\n".join(lines), "tokens": 0}
 
         add_msg(thread_id, "user", text, "text")
+        file_blocks = []
+        for doc_id in req.files:
+            try:
+                txt = files_text(doc_id).get("text", "")
+                if txt:
+                    file_blocks.append(txt)
+            except Exception:
+                pass
 
         # Web search
         search_block = ""
@@ -554,7 +558,12 @@ def send(req: SendReq):
         if req.web and search_block:
             system_prompt += "\nIf a 'Źródła wyszukiwania' block is present, ground the answer in it and cite briefly."
 
-        messages = [{"role": "system", "content": system_prompt}] + history
+        context = history[:-1] if len(history) > 1 else []
+        user_msg = history[-1] if history else {"role": "user", "content": text}
+        messages = [{"role": "system", "content": system_prompt}] + context
+        for block in file_blocks:
+            messages.append({"role": "system", "content": block})
+        messages.append(user_msg)
 
         model = req.model if req.model in MODEL_CHOICES else MODEL_TEXT
         resp = client.responses.create(model=model, input=messages)
