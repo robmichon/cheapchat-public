@@ -57,6 +57,7 @@ img.chatimg{max-width:60%;border-radius:12px;border:1px solid var(--border);disp
 /* Modale */
 .hidden{display:none}
 .modal{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:10}
+.modal[hidden]{display:none}
 .modalcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;max-width:90vw;max-height:90vh;overflow:auto;min-width:300px}
 .modalhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
 .modalhead .row{display:flex;gap:8px}
