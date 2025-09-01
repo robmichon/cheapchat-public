@@ -18,10 +18,10 @@ python app.py
 
 ## Dane użytkownika
 
-Domyślne dane (baza i załączniki) trafiają do katalogu `~/.config/cheapchat`:
+Domyślna lokalizacja danych (baza i załączniki) to podkatalog `data/` w repozytorium. Możesz ją zmienić, ustawiając zmienną środowiskową `CHEAPCHAT_DATA_DIR`.
 
 ```
-~/.config/cheapchat/
+data/
 ├── memory.sqlite
 └── static/
     ├── docs/

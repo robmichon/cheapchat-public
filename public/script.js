@@ -22,6 +22,7 @@ const filesList = document.getElementById('filesList');
 const filesUpload = document.getElementById('filesUpload');
 const pdfBtn = document.getElementById('pdfBtn');
 const settingsBtn = document.getElementById('settingsBtn');
+const selectedFiles = new Set();
 
 function el(tag, cls){ const x = document.createElement(tag); if(cls) x.className=cls; return x; }
 function renderMarkdown(md) {
@@ -179,7 +180,8 @@ async function sendText(text){
       text,
       web: localStorage.getItem('web') === '1',
       use_memory: localStorage.getItem('use_mem') !== '0',
-      model: localStorage.getItem('model') || undefined
+      model: localStorage.getItem('model') || undefined,
+      files: Array.from(selectedFiles)
     };
     const r = await fetch('/api/send', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     const raw = await r.text(); let data; try { data = JSON.parse(raw); } catch(_){ throw new Error(`HTTP ${r.status} — nie-JSON:\n${raw}`); }
@@ -287,13 +289,21 @@ async function loadFilesList(){
   filesList.innerHTML = "";
   for(const f of list){
     const row = document.createElement('div'); row.className='fileitem';
-    row.innerHTML = `<div><b>${f.name}</b> <span class="muted">${(f.size/1024).toFixed(1)}kB</span></div>`;
+    const info = document.createElement('div');
+    const chk = document.createElement('input'); chk.type='checkbox'; chk.checked = selectedFiles.has(f.id);
+    chk.onchange = ()=>{ if(chk.checked) selectedFiles.add(f.id); else selectedFiles.delete(f.id); };
+    const nameEl = document.createElement('b'); nameEl.textContent = f.name;
+    const sizeEl = document.createElement('span'); sizeEl.className='muted'; sizeEl.textContent = `${(f.size/1024).toFixed(1)}kB`;
+    info.append(chk, nameEl, document.createTextNode(' '), sizeEl);
+
     const act = document.createElement('div'); act.className='actions';
     const openBtn = document.createElement('button'); openBtn.textContent='Otwórz'; openBtn.onclick=()=>window.open(f.url,'_blank');
     const textBtn = document.createElement('button'); textBtn.textContent='Tekst'; textBtn.onclick=async()=>{ setStatus('parsuję…'); const rr = await fetch(`/api/files/${f.id}/text`); const jj = await rr.json(); addTextMsg('assistant', "### Tekst z pliku\n\n```\n" + (jj.text||"") + "\n```"); setStatus('gotowy'); };
     const ocrBtn = document.createElement('button'); ocrBtn.textContent='OCR'; ocrBtn.onclick=async()=>{ const lang = prompt('Języki OCR (np. pol+eng):','pol+eng') || 'pol+eng'; setStatus('OCR…'); const rr = await fetch(`/api/files/${f.id}/ocr?lang=${encodeURIComponent(lang)}`); const jj = await rr.json(); addTextMsg('assistant', "### OCR ("+lang+")\n\n```\n" + (jj.text||"") + "\n```"); setStatus('gotowy'); };
     const delBtn = document.createElement('button'); delBtn.textContent='Usuń'; delBtn.onclick=async()=>{ if(confirm('Usunąć?')){ await fetch(`/api/files/${f.id}`, {method:'DELETE'}); loadFilesList(); } };
-    act.append(openBtn, textBtn, ocrBtn, delBtn); row.appendChild(act); filesList.appendChild(row);
+    act.append(openBtn, textBtn, ocrBtn, delBtn);
+    row.append(info, act);
+    filesList.appendChild(row);
   }
 }
 
