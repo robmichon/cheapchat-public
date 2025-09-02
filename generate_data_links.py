@@ -36,5 +36,5 @@ def odt_data_url(text: str) -> str:
 
 
 if __name__ == "__main__":
-    print("PDF link:", pdf_data_url("Hello PDF"))
-    print("ODT link:", odt_data_url("Hello ODT"))
+    print(f'<a href="{pdf_data_url("Hello PDF")}">PDF</a>')
+    print(f'<a href="{odt_data_url("Hello ODT")}">ODT</a>')

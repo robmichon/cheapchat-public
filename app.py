@@ -36,6 +36,7 @@ from odf.opendocument import load as odf_load
 from odf import text as odf_text
 from PIL import Image
 from reportlab.pdfgen import canvas
+from generate_data_links import pdf_data_url, odt_data_url
 
 # ----------------- KONFIG ----------------------
 API_KEY = None  # loaded dynamically
@@ -129,6 +130,14 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/settings")
 def settings_page():
     return FileResponse(PUBLIC_DIR / "settings.html")
+
+
+@app.get("/api/data-links")
+def data_links():
+    pdf = pdf_data_url("Hello PDF")
+    odt = odt_data_url("Hello ODT")
+    html = f'<a href="{pdf}">PDF</a><br><a href="{odt}">ODT</a>'
+    return {"pdf": pdf, "odt": odt, "html": html}
 
 # -------------- DB + MIGRACJE ------------------
 def ensure_schema():
