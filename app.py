@@ -15,11 +15,11 @@ for pkg in REQUIRED:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "--break-system-packages", pkg])
 
 # ------------------- IMPORTY -------------------
-import os, sqlite3, uuid, base64, pathlib, json
+import os, sqlite3, uuid, base64, pathlib, json, tempfile, asyncio
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -50,16 +50,13 @@ TTS_VOICES  = ["alloy","verse","coral","amber","breeze","cobalt","sol"]  # + 'so
 PORT = int(os.environ.get("PORT", 8000))
 
 BASE_DIR = pathlib.Path(__file__).parent.resolve()
-DATA_DIR = pathlib.Path(os.getenv("CHEAPCHAT_DATA_DIR", BASE_DIR / "data"))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR = pathlib.Path(os.getenv("CHEAPCHAT_DATA_DIR", pathlib.Path.home() / ".config" / "cheapchat"))
 print(f"[data] dir: {DATA_DIR}")
 DB_PATH = DATA_DIR / "memory.sqlite"
 print(f"[db] using {DB_PATH}")
-STATIC_DIR = DATA_DIR / "static"
-IMG_DIR = STATIC_DIR / "images"
-DOCS_DIR = STATIC_DIR / "docs"
-STATIC_DIR.mkdir(exist_ok=True); IMG_DIR.mkdir(parents=True, exist_ok=True); DOCS_DIR.mkdir(parents=True, exist_ok=True)
 PUBLIC_DIR = BASE_DIR / "public"
+TEMP_FILES = {}
+TEMP_TTL = 300  # seconds
 
 # ---- API key loader ----
 def _read_first_nonempty(path):
@@ -123,7 +120,6 @@ client = OpenAI(api_key=API_KEY)
 # ----------------- APP -------------------------
 app = FastAPI(title="Prywatny czat z pamięcią")
 app.mount("/public", StaticFiles(directory=str(PUBLIC_DIR)), name="public")
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/settings")
@@ -170,6 +166,27 @@ ensure_schema()
 
 def db():
     return sqlite3.connect(DB_PATH)
+
+async def remove_temp_file(file_id: str, delay: int = TEMP_TTL):
+    await asyncio.sleep(delay)
+    info = TEMP_FILES.pop(file_id, None)
+    if not info:
+        return
+    try:
+        info["path"].unlink(missing_ok=True)
+    except Exception:
+        pass
+    if info.get("doc"):
+        with db() as conn:
+            conn.execute("DELETE FROM documents WHERE id=?", (file_id,))
+
+
+async def remove_path(path, delay: int = TEMP_TTL):
+    await asyncio.sleep(delay)
+    try:
+        pathlib.Path(path).unlink(missing_ok=True)
+    except Exception:
+        pass
 
 # -------------- MODELE -------------------------
 class SendReq(BaseModel):
@@ -420,8 +437,8 @@ def api_delete_thread(thread_id: str):
 
 def create_pdf(thread_id: str) -> pathlib.Path:
     msgs = get_thread_messages(thread_id)
-    fname = f"{thread_id}.pdf"
-    fpath = DOCS_DIR / fname
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    fpath = pathlib.Path(tmp.name)
     c = canvas.Canvas(str(fpath))
     width, height = c._pagesize
     textobj = c.beginText(40, height - 40)
@@ -435,8 +452,9 @@ def create_pdf(thread_id: str) -> pathlib.Path:
     return fpath
 
 @app.get("/api/thread/{thread_id}/pdf")
-def thread_pdf(thread_id: str):
+def thread_pdf(thread_id: str, background: BackgroundTasks):
     fpath = create_pdf(thread_id)
+    background.add_task(remove_path, fpath)
     return FileResponse(fpath, media_type="application/pdf", filename=f"{thread_id}.pdf")
 
 # -------------- ENDPOINTY: ANCHORS ------------
@@ -621,7 +639,7 @@ def tts(req: TTSReq):
 
 # -------------- IMAGES -------------------------
 @app.post("/api/image")
-def gen_image(req: ImageReq):
+def gen_image(req: ImageReq, background: BackgroundTasks):
     try:
         thread_id = req.thread_id or new_thread()
         prompt = (req.prompt or "").strip()
@@ -630,11 +648,14 @@ def gen_image(req: ImageReq):
         img = client.images.generate(model=MODEL_IMAGE, prompt=prompt, size=req.size or "1024x1024", n=1)
         b64 = img.data[0].b64_json
         raw = base64.b64decode(b64)
-        fname = f"{uuid.uuid4().hex}.png"
-        fpath = IMG_DIR / fname
-        with open(fpath, "wb") as f:
-            f.write(raw)
-        url = f"/static/images/{fname}"
+        file_id = uuid.uuid4().hex
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        tmp.write(raw)
+        tmp.close()
+        path = pathlib.Path(tmp.name)
+        TEMP_FILES[file_id] = {"path": path, "mime": "image/png"}
+        background.add_task(remove_temp_file, file_id)
+        url = f"/api/temp/{file_id}"
         add_msg(thread_id, "assistant", json.dumps({"prompt": prompt, "url": url}), "image")
         return {"thread_id": thread_id, "url": url, "prompt": prompt}
     except HTTPException:
@@ -644,51 +665,64 @@ def gen_image(req: ImageReq):
 
 # -------------- FILES: upload/list/delete -------
 @app.post("/api/files/upload")
-async def files_upload(files: List[UploadFile] = File(...)):
+async def files_upload(background: BackgroundTasks, files: List[UploadFile] = File(...)):
     results = []
     for file in files:
         raw = await file.read()
-        doc_id = str(uuid.uuid4())
+        doc_id = uuid.uuid4().hex
         suffix = pathlib.Path(file.filename).suffix
-        fname = f"{doc_id}{suffix}"
-        fpath = DOCS_DIR / fname
-        with open(fpath, "wb") as f:
-            f.write(raw)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        tmp.write(raw)
+        tmp.close()
+        path = pathlib.Path(tmp.name)
         with db() as conn:
-            conn.execute("INSERT INTO documents(id, filename, orig_name, mime, size, created_at) VALUES(?,?,?,?,?,?)",
-                         (doc_id, fname, file.filename, file.content_type, len(raw), datetime.now(timezone.utc).isoformat()))
-        url = f"/static/docs/{fname}"
+            conn.execute(
+                "INSERT INTO documents(id, filename, orig_name, mime, size, created_at) VALUES(?,?,?,?,?,?)",
+                (doc_id, path.name, file.filename, file.content_type, len(raw), datetime.now(timezone.utc).isoformat()),
+            )
+        TEMP_FILES[doc_id] = {"path": path, "mime": file.content_type, "doc": True}
+        background.add_task(remove_temp_file, doc_id)
+        url = f"/api/temp/{doc_id}"
         results.append({"id": doc_id, "url": url, "name": file.filename, "mime": file.content_type, "size": len(raw)})
     return {"files": results}
 
 @app.get("/api/files/list")
 def files_list():
     with db() as conn:
-        cur = conn.execute("SELECT id, filename, orig_name, mime, size, created_at FROM documents ORDER BY created_at DESC")
-        return [{"id":i,"url":f"/static/docs/{fn}","name":on,"mime":m,"size":s,"created_at":ca} for (i,fn,on,m,s,ca) in cur.fetchall()]
+        cur = conn.execute("SELECT id, orig_name, mime, size, created_at FROM documents ORDER BY created_at DESC")
+        return [
+            {
+                "id": i,
+                "url": f"/api/temp/{i}",
+                "name": on,
+                "mime": m,
+                "size": s,
+                "created_at": ca,
+            }
+            for (i, on, m, s, ca) in cur.fetchall()
+            if i in TEMP_FILES
+        ]
 
 @app.delete("/api/files/{doc_id}")
 def files_delete(doc_id: str):
+    info = TEMP_FILES.pop(doc_id, None)
+    if not info:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        info["path"].unlink(missing_ok=True)
+    except Exception:
+        pass
     with db() as conn:
-        cur = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,))
-        row = cur.fetchone()
-        if not row: raise HTTPException(status_code=404, detail="Not found")
-        (fn,) = row
-        try:
-            (DOCS_DIR / fn).unlink(missing_ok=True)
-        except: pass
         conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
     return {"ok": True}
 
 @app.get("/api/files/{doc_id}/text")
 def files_text(doc_id: str):
-    with db() as conn:
-        cur = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,))
-        row = cur.fetchone()
-    if not row: raise HTTPException(status_code=404, detail="Not found")
-    fname = row[0]
-    fpath = DOCS_DIR / fname
-    suffix = pathlib.Path(fname).suffix.lower()
+    info = TEMP_FILES.get(doc_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Not found")
+    fpath = info["path"]
+    suffix = fpath.suffix.lower()
     try:
         if suffix == ".pdf":
             text = pdf_extract_text(str(fpath))
@@ -706,13 +740,11 @@ def files_text(doc_id: str):
 
 @app.get("/api/files/{doc_id}/ocr")
 def files_ocr(doc_id: str, lang: str = "pol+eng", dpi: int = 250):
-    with db() as conn:
-        cur = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,))
-        row = cur.fetchone()
-    if not row: raise HTTPException(status_code=404, detail="Not found")
-    fname = row[0]
-    fpath = DOCS_DIR / fname
-    suffix = pathlib.Path(fname).suffix.lower()
+    info = TEMP_FILES.get(doc_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Not found")
+    fpath = info["path"]
+    suffix = fpath.suffix.lower()
     try:
         if suffix == ".pdf":
             images = convert_from_path(str(fpath), dpi=dpi)
@@ -724,6 +756,14 @@ def files_ocr(doc_id: str, lang: str = "pol+eng", dpi: int = 250):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {e}")
     return {"id": doc_id, "lang": lang, "text": full}
+
+
+@app.get("/api/temp/{file_id}")
+def temp_file(file_id: str):
+    info = TEMP_FILES.get(file_id)
+    if not info or not info["path"].exists():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(info["path"], media_type=info.get("mime"))
 
 # -------------- HEALTH -------------------------
 @app.get("/-/health")
